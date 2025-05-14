@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizarra Colaborativa</title>
+    <link rel="stylesheet" href="styles/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <h1>Pizarra Colaborativa</h1>
+
+    <!-- Formulario para iniciar sesión -->
+    <div id="login-section">
+        <label for="login-username">Nombre de usuario:</label>
+        <input type="text" id="login-username" placeholder="Tu nombre">
+        <button id="login-button">Entrar</button>
+    </div>
+
+    <!-- Sección para seleccionar o crear pizarras -->
+    <div id="board-section" style="display: none;">
+        <h2>Bienvenido, <span id="user-display"></span></h2>
+        <ul id="boards"></ul>
+        <input type="text" id="new-board-name" placeholder="Nombre de la nueva pizarra">
+        <button id="create-board-button">Crear Pizarra</button>
+    </div>
+
+    <!-- Área de edición de la pizarra -->
+    <div id="editor-section" style="display: none; text-align: center;">
+        <h3 id="board-title"></h3>
+        <div style="display: inline-block;">
+            <canvas id="canvas" width="1000" height="700"></canvas>
+            <div id="tools">
+                <button id="pencil-tool" title="Lápiz"><i class="fas fa-pencil-alt"></i></button>
+                <button id="eraser-tool" title="Borrador"><i class="fas fa-eraser"></i></button>
+                <button id="text-tool" title="Texto"><i class="fas fa-font"></i></button>
+                <button id="highlight-tool" title="Subrayar"><i class="fas fa-highlighter"></i></button>
+                <button id="shape-tool" title="Figuras"><i class="fas fa-shapes"></i></button>
+                <select id="shape-selector">
+                    <option value="line">Línea</option>
+                    <option value="rectangle">Rectángulo</option>
+                    <option value="square">Cuadrado</option>
+                    <option value="triangle">Triángulo</option>
+                    <option value="pentagon">Pentágono</option>
+                    <option value="hexagon">Hexágono</option>
+                </select>
+                <input type="color" id="color-picker" value="#000000">
+                <input type="range" id="brush-size" min="2" max="20" value="5">
+            </div>
+        </div>
+        <p id="status"></p>
+        <button id="clear-button">Limpiar</button>
+        <button id="clear-canvas">Limpiar Canvas</button>
+        <button id="back-button">Volver a la lista de pizarras</button>
+        <button id="download-button">Descargar Pizarra</button>
+    </div>
+    <script src="js/script.js"></script>
+</body>
+</html>
