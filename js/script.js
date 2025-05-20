@@ -1,4 +1,4 @@
-// Obtener elementos del DOM
+// DOM elements and initial state setup for login, board selection, and editor UI
 const userSection = document.getElementById('login-section');
 const boardSection = document.getElementById('board-section');
 const editorSection = document.getElementById('editor-section');
@@ -23,45 +23,42 @@ let painting = false;
 let lastX = 0;
 let lastY = 0;
 
-let currentTool = 'pencil'; // Herramienta actual
+let currentTool = 'pencil';
 let brushColor = '#000';
-let brushSize = 5; // Tamaño predeterminado más grande
+let brushSize = 5;
 
-document.getElementById('brush-size').value = brushSize; // Sincroniza el control deslizante
+document.getElementById('brush-size').value = brushSize;
 
-let isWritingText = false; // Indica si el modo de texto está activo
+let isWritingText = false;
 
-// Cambiar a la herramienta lápiz
+// Tool selection event listeners for drawing, erasing, highlighting, shapes, and text
 document.getElementById('pencil-tool').addEventListener('click', () => {
     currentTool = 'pencil';
-    canvas.style.cursor = 'crosshair'; // Cursor para dibujo
+    canvas.style.cursor = 'crosshair';
 });
 
-// Cambiar a la herramienta borrador
 document.getElementById('eraser-tool').addEventListener('click', () => {
     currentTool = 'eraser';
-    canvas.style.cursor = 'crosshair'; // Cursor para borrar
+    canvas.style.cursor = 'crosshair';
 });
 
-// Cambiar a la herramienta texto
 document.getElementById('text-tool').addEventListener('click', () => {
     currentTool = 'text';
-    canvas.style.cursor = 'text'; // Cursor para texto
-    painting = false; // Detener cualquier dibujo activo
+    canvas.style.cursor = 'text';
+    painting = false;
 });
 
-// Cambiar a la herramienta subrayado
 document.getElementById('highlight-tool').addEventListener('click', () => {
     currentTool = 'highlight';
-    canvas.style.cursor = 'crosshair'; // Usa el mismo cursor que el lápiz
+    canvas.style.cursor = 'crosshair';
 });
 
-// Cambiar a la herramienta figuras geométricas
 document.getElementById('shape-tool').addEventListener('click', () => {
     currentTool = 'shape';
-    canvas.style.cursor = 'crosshair'; // Cursor para figuras
+    canvas.style.cursor = 'crosshair';
 });
 
+// Color and brush size picker event listeners
 document.getElementById('color-picker').addEventListener('input', (event) => {
     brushColor = event.target.value;
 });
@@ -70,12 +67,13 @@ document.getElementById('brush-size').addEventListener('input', (event) => {
     brushSize = event.target.value;
 });
 
+// WebSocket connection for real-time collaboration
 const socket = new WebSocket('ws://localhost:3000');
 
 let currentUser = null;
 let currentBoard = null;
 
-// Validar que los elementos existan
+// Check for required DOM elements before proceeding
 if (
     !userSection ||
     !boardSection ||
@@ -105,26 +103,29 @@ if (
     throw new Error('Error crítico: elementos del DOM faltantes.');
 }
 
-// Conexión al servidor WebSocket
+// WebSocket event handlers for connection and incoming messages
 socket.onopen = () => {
     console.log('Conectado al servidor.');
 };
 
-// Maneja mensajes del servidor
 socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
+    // Handle canvas updates from other users
     if (data.type === 'update-canvas') {
         const img = new Image();
         img.src = data.canvasData;
         img.onload = () => {
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpia el canvas
-            ctx.drawImage(img, 0, 0); // Dibuja la imagen recibida
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
         };
+    // Handle board list updates
     } else if (data.type === 'board-list') {
         updateBoardList(data.boards);
+    // Handle error messages
     } else if (data.type === 'error') {
         alert(`Error: ${data.message}`);
+    // Handle remote pointer display for collaborative editing
     } else if (data.type === 'pointer' && data.username !== currentUser) {
         const pointer = document.getElementById('remote-pointer');
         const pointerName = document.getElementById('remote-pointer-name');
@@ -132,8 +133,6 @@ socket.onmessage = (event) => {
         pointer.style.left = (canvas.offsetLeft + data.x) + 'px';
         pointer.style.top = (canvas.offsetTop + data.y) + 'px';
         pointerName.textContent = data.username;
-
-        // Oculta el puntero si no se recibe actualización en 1 segundo
         clearTimeout(window.pointerTimeout);
         window.pointerTimeout = setTimeout(() => {
             pointer.style.display = 'none';
@@ -141,7 +140,7 @@ socket.onmessage = (event) => {
     }
 };
 
-// Verifica el estado del WebSocket antes de enviar mensajes
+// Helper to send messages through WebSocket if connection is open
 function sendMessage(data) {
     if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(data));
@@ -150,7 +149,7 @@ function sendMessage(data) {
     }
 }
 
-// Solicitar la lista de pizarras al servidor
+// Fetch the list of available boards from the server
 function fetchBoards() {
     fetch('/get-boards')
         .then((response) => {
@@ -160,19 +159,19 @@ function fetchBoards() {
             return response.json();
         })
         .then((data) => {
-            updateBoardList(data.boards); // Actualiza la lista de pizarras en el DOM
+            updateBoardList(data.boards);
         })
         .catch((error) => {
             console.error('Error al obtener las pizarras:', error);
         });
 }
 
-// Llama a fetchBoards al cargar la página
+// Initial fetch of boards when the page loads
 window.onload = () => {
     fetchBoards();
 };
 
-// Evento para iniciar sesión
+// Login functionality: set current user and show board selection
 loginButton.addEventListener('click', () => {
     const username = usernameInput.value.trim();
 
@@ -181,16 +180,15 @@ loginButton.addEventListener('click', () => {
         return;
     }
 
-    // Permitir el acceso al sistema con cualquier nombre de usuario
     currentUser = username;
     userDisplay.innerText = username;
     userSection.style.display = 'none';
     boardSection.style.display = 'block';
 
-    // Solicitar la lista de pizarras al servidor inmediatamente
     fetchBoards();
 });
 
+// Create a new board and refresh the board list
 createBoardButton.addEventListener('click', () => {
     const boardName = newBoardNameInput.value.trim();
     if (boardName) {
@@ -208,7 +206,7 @@ createBoardButton.addEventListener('click', () => {
                 return response.json();
             })
             .then(() => {
-                fetchBoards(); // Actualiza la lista de pizarras
+                fetchBoards();
             })
             .catch((error) => {
                 alert(`Error: ${error.message}`);
@@ -219,15 +217,14 @@ createBoardButton.addEventListener('click', () => {
     }
 });
 
-// Evento para seleccionar una pizarra
+// Board selection: join a board and switch to the editor view
 if (boardList) {
     boardList.addEventListener('click', (event) => {
-        // Verifica si el clic fue en un elemento <li> o en su hijo <span>
         const target = event.target.closest('li');
         if (target) {
-            const boardNameSpan = target.querySelector('.board-name'); // Obtén el <span> con el nombre
+            const boardNameSpan = target.querySelector('.board-name');
             if (boardNameSpan) {
-                currentBoard = boardNameSpan.innerText; // Usa solo el texto del <span>
+                currentBoard = boardNameSpan.innerText;
                 boardTitle.innerText = `Pizarra: ${currentBoard}`;
                 boardSection.style.display = 'none';
                 editorSection.style.display = 'block';
@@ -237,7 +234,7 @@ if (boardList) {
     });
 }
 
-// Evento para volver a la lista de pizarras
+// Return to board selection from the editor
 backButton.addEventListener('click', () => {
     currentBoard = null;
     editorSection.style.display = 'none';
@@ -245,51 +242,47 @@ backButton.addEventListener('click', () => {
     sendMessage({ type: 'leave-board' });
 });
 
-// Actualiza la lista de pizarras
+// Update the board list in the DOM
 function updateBoardList(boards) {
     if (!boardList) {
         console.error('El elemento boardList no está definido.');
         return;
     }
 
-    boardList.innerHTML = ''; // Limpia la lista actual
+    boardList.innerHTML = '';
     boards.forEach((board) => {
         const li = document.createElement('li');
-        li.classList.add('board-item'); // Agrega una clase para estilos si es necesario
+        li.classList.add('board-item');
 
-        // Crear un span para el nombre de la pizarra
         const boardNameSpan = document.createElement('span');
-        boardNameSpan.innerText = board; // Solo el nombre de la pizarra
-        boardNameSpan.classList.add('board-name'); // Clase opcional para estilos
+        boardNameSpan.innerText = board;
+        boardNameSpan.classList.add('board-name');
 
-        // Botón de eliminar
         const deleteButton = document.createElement('button');
         deleteButton.innerText = 'Eliminar';
         deleteButton.classList.add('delete-button');
         deleteButton.addEventListener('click', (event) => {
-            event.stopPropagation(); // Evita que el clic en el botón seleccione la pizarra
+            event.stopPropagation();
             deleteBoard(board);
         });
 
-        // Agregar el nombre y el botón al elemento de la lista
         li.appendChild(boardNameSpan);
         li.appendChild(deleteButton);
 
-        // Agregar el elemento de la lista al contenedor
         boardList.appendChild(li);
     });
 
     console.log('Lista de pizarras actualizada en el DOM:', boards);
 }
 
-// Función para eliminar una pizarra
+// Delete a board after user confirmation
 function deleteBoard(boardName) {
     if (!confirm(`¿Estás seguro de que deseas eliminar la pizarra "${boardName}"?`)) return;
 
     fetch('/delete-board', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ boardName }), // Envía el nombre de la pizarra al servidor
+        body: JSON.stringify({ boardName }),
     })
         .then((response) => {
             if (!response.ok) {
@@ -300,27 +293,26 @@ function deleteBoard(boardName) {
             return response.json();
         })
         .then(() => {
-            fetchBoards(); // Actualiza la lista de pizarras
+            fetchBoards();
         })
         .catch((error) => {
             alert(`Error al eliminar la pizarra: ${error.message}`);
         });
 }
 
-// Eventos para pintar en el canvas
-
+// Shape selection for drawing polygons and other shapes
 let selectedShape = 'rectangle';
 
 document.getElementById('shape-selector').addEventListener('change', (event) => {
     selectedShape = event.target.value;
 });
 
-let startX = 0; // Coordenada inicial X
-let startY = 0; // Coordenada inicial Y
-let isDrawingShape = false; // Indica si se está dibujando una figura
-let canvasState = null; // Variable para guardar el estado del canvas
+let startX = 0;
+let startY = 0;
+let isDrawingShape = false;
+let canvasState = null;
 
-// Evento para iniciar el dibujo de figuras
+// Mouse events for drawing shapes and freehand lines
 canvas.addEventListener('mousedown', (event) => {
     if (currentTool === 'shape') {
         isDrawingShape = true;
@@ -336,7 +328,7 @@ canvas.addEventListener('mousedown', (event) => {
     }
 });
 
-// Evento para dibujar dinámicamente la figura
+// Shape preview while dragging the mouse
 canvas.addEventListener('mousemove', (event) => {
     if (currentTool === 'shape' && isDrawingShape) {
         const rect = canvas.getBoundingClientRect();
@@ -367,7 +359,6 @@ canvas.addEventListener('mousemove', (event) => {
             const dx = currentX - startX;
             const dy = currentY - startY;
             const radius = Math.sqrt(dx * dx + dy * dy);
-            // Calcula el ángulo de rotación basado en el movimiento del mouse
             const rotation = Math.atan2(dy, dx);
 
             ctx.moveTo(
@@ -387,7 +378,7 @@ canvas.addEventListener('mousemove', (event) => {
     }
 });
 
-// Evento para dibujar en el canvas
+// Drawing logic for pencil, eraser, and highlighter tools
 canvas.addEventListener('mousemove', (event) => {
     if (!painting || (currentTool !== 'pencil' && currentTool !== 'eraser' && currentTool !== 'highlight')) return;
 
@@ -403,7 +394,7 @@ canvas.addEventListener('mousemove', (event) => {
         ctx.closePath();
     } else if (currentTool === 'highlight') {
         ctx.globalCompositeOperation = 'source-over';
-        ctx.strokeStyle = hexToRgba(brushColor, 0.4); // 40% opacidad
+        ctx.strokeStyle = hexToRgba(brushColor, 0.4);
         ctx.lineWidth = brushSize * 2;
         ctx.lineCap = 'round';
 
@@ -411,7 +402,6 @@ canvas.addEventListener('mousemove', (event) => {
         ctx.moveTo(lastX, lastY);
         ctx.lineTo(x, y);
         ctx.stroke();
-        // NO uses ctx.closePath() aquí, para evitar artefactos de puntos
     } else if (currentTool === 'pencil') {
         ctx.globalCompositeOperation = 'source-over';
         ctx.strokeStyle = brushColor;
@@ -422,12 +412,12 @@ canvas.addEventListener('mousemove', (event) => {
         ctx.moveTo(lastX, lastY);
         ctx.lineTo(x, y);
         ctx.stroke();
-        // NO uses ctx.closePath() aquí, para evitar artefactos de puntos
     }
 
     lastX = x;
     lastY = y;
 
+    // Send pointer position and canvas update to server for collaboration
     if (painting && currentUser && currentBoard) {
         sendMessage({
             type: 'pointer',
@@ -438,22 +428,20 @@ canvas.addEventListener('mousemove', (event) => {
         });
     }
 
-    // Sincroniza el contenido del canvas con el servidor
     const canvasData = canvas.toDataURL();
     sendMessage({ type: 'update-canvas', boardName: currentBoard, canvasData });
 });
 
-// Evento para finalizar el dibujo
+// Mouse up event to finish drawing and send canvas update
 canvas.addEventListener('mouseup', () => {
     painting = false;
-    ctx.beginPath(); // Reinicia el camino para evitar líneas conectadas
+    ctx.beginPath();
 
-    // Sincroniza el contenido del canvas con el servidor
     const canvasData = canvas.toDataURL();
     sendMessage({ type: 'update-canvas', boardName: currentBoard, canvasData });
 });
 
-// Evento para finalizar el dibujo de figuras
+// Mouse up event for shapes to finalize the drawing and send update
 canvas.addEventListener('mouseup', (event) => {
     if (currentTool === 'shape' && isDrawingShape) {
         isDrawingShape = false;
@@ -483,7 +471,6 @@ canvas.addEventListener('mouseup', (event) => {
             const dx = endX - startX;
             const dy = endY - startY;
             const radius = Math.sqrt(dx * dx + dy * dy);
-            // Calcula el ángulo de rotación basado en el movimiento del mouse
             const rotation = Math.atan2(dy, dx);
 
             ctx.moveTo(
@@ -501,26 +488,24 @@ canvas.addEventListener('mouseup', (event) => {
 
         ctx.stroke();
 
-        // Sincroniza el contenido del canvas con el servidor
         const canvasData = canvas.toDataURL();
         sendMessage({ type: 'update-canvas', boardName: currentBoard, canvasData });
     } else {
         painting = false;
-        ctx.beginPath(); // Reinicia el camino para evitar líneas conectadas
+        ctx.beginPath();
 
-        // Sincroniza el contenido del canvas con el servidor
         const canvasData = canvas.toDataURL();
         sendMessage({ type: 'update-canvas', boardName: currentBoard, canvasData });
     }
 });
 
-// Detener el dibujo si el cursor sale del canvas
+// Stop drawing when mouse leaves the canvas
 canvas.addEventListener('mouseleave', () => {
     painting = false;
-    ctx.beginPath(); // Reinicia el camino para evitar líneas conectadas
+    ctx.beginPath();
 });
 
-// Capturar clics en el canvas para escribir texto
+// Text tool: create a temporary editable div for text input, then draw it on the canvas
 canvas.addEventListener('click', (event) => {
     if (currentTool !== 'text') return;
 
@@ -547,7 +532,6 @@ canvas.addEventListener('click', (event) => {
         ctx.fillStyle = brushColor;
         ctx.fillText(textBox.innerText, x, y);
 
-        // Sincronizar el texto con el servidor
         const canvasData = canvas.toDataURL();
         sendMessage({ type: 'update-canvas', boardName: currentBoard, canvasData });
 
@@ -555,48 +539,44 @@ canvas.addEventListener('click', (event) => {
     });
 });
 
-// Descargar pizarra como imagen
+// Download the current board as a PNG image
 document.getElementById('download-button').addEventListener('click', () => {
-    // Crear un canvas temporal
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = canvas.width;
     tempCanvas.height = canvas.height;
     const tempCtx = tempCanvas.getContext('2d');
 
-    // Pintar fondo blanco
     tempCtx.fillStyle = '#fff';
     tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-    // Dibujar el contenido del canvas original
     tempCtx.drawImage(canvas, 0, 0);
 
-    // Descargar la imagen con fondo blanco
     const link = document.createElement('a');
     link.download = `${currentBoard}.png`;
     link.href = tempCanvas.toDataURL();
     link.click();
 });
 
+// Clear the canvas and notify other users
 document.getElementById('clear-canvas').addEventListener('click', () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Sincroniza el canvas vacío con el servidor
     const canvasData = canvas.toDataURL();
     sendMessage({ type: 'update-canvas', boardName: currentBoard, canvasData });
 });
 
-// WebSocket Server para manejar conexiones
+// WebSocket server-side logic for broadcasting canvas updates (for Node.js server)
 wss.on('connection', (ws) => {
     ws.on('message', (message) => {
         const data = JSON.parse(message);
 
         if (data.type === 'update-canvas') {
-            // Transmite los cambios a todos los usuarios excepto al remitente
             broadcast(data, ws);
         }
     });
 });
 
+// Broadcast helper for sending data to all connected clients except the sender
 function broadcast(data, exclude) {
     wss.clients.forEach((client) => {
         if (client !== exclude && client.readyState === WebSocket.OPEN) {
@@ -605,7 +585,7 @@ function broadcast(data, exclude) {
     });
 }
 
-// Utilidad para convertir HEX a RGBA
+// Utility to convert hex color to rgba for highlight tool
 function hexToRgba(hex, alpha) {
     let r = 0, g = 0, b = 0;
     if (hex.length === 7) {

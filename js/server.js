@@ -9,16 +9,16 @@ const {
     getBoardContent,
     updateBoardContent,
 } = require('./zookeeperClient');
-const { createCanvas } = require('canvas'); // Para generar imágenes de las pizarras
+const { createCanvas } = require('canvas'); // Used for generating board images
 
 const app = express();
 const port = 3000;
 
-// Sirve archivos estáticos desde el directorio raíz
+// Serve static files and enable JSON parsing for requests
 app.use(express.static(path.join(__dirname, '../')));
-app.use(express.json()); // Necesario para manejar JSON en el cuerpo de las solicitudes
+app.use(express.json());
 
-// Registro de usuario
+// User registration endpoint
 app.post('/register', express.json(), async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -29,7 +29,7 @@ app.post('/register', express.json(), async (req, res) => {
     }
 });
 
-// Autenticación de usuario
+// User authentication endpoint
 app.post('/login', express.json(), async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -44,7 +44,7 @@ app.post('/login', express.json(), async (req, res) => {
     }
 });
 
-// Descarga de pizarra como imagen
+// Endpoint to download a board as an image (PNG)
 app.get('/download/:boardName', async (req, res) => {
     const { boardName } = req.params;
     try {
@@ -52,14 +52,12 @@ app.get('/download/:boardName', async (req, res) => {
         const canvas = createCanvas(800, 600);
         const ctx = canvas.getContext('2d');
 
-        // Dibujar el contenido de la pizarra en el canvas
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#000000';
         ctx.font = '16px Arial';
         ctx.fillText(content, 50, 50);
 
-        // Enviar la imagen como respuesta
         res.setHeader('Content-Type', 'image/png');
         canvas.createPNGStream().pipe(res);
     } catch (error) {
@@ -67,6 +65,7 @@ app.get('/download/:boardName', async (req, res) => {
     }
 });
 
+// Endpoint to save a board's content
 app.post('/save-board', express.json(), async (req, res) => {
     const { boardName, content } = req.body;
     try {
@@ -77,6 +76,7 @@ app.post('/save-board', express.json(), async (req, res) => {
     }
 });
 
+// Endpoint to load a board's content
 app.get('/load-board/:boardName', async (req, res) => {
     const { boardName } = req.params;
     try {
@@ -87,10 +87,10 @@ app.get('/load-board/:boardName', async (req, res) => {
     }
 });
 
-// Cargar la lista de pizarras desde ZooKeeper
+// Endpoint to get the list of boards from ZooKeeper
 app.get('/get-boards', async (req, res) => {
     try {
-        const boards = await zookeeperClient.getChildren('/boards'); // Obtiene las pizarras desde ZooKeeper
+        const boards = await zookeeperClient.getChildren('/boards');
         res.json({ boards });
     } catch (error) {
         console.error('Error al obtener las pizarras:', error);
@@ -98,7 +98,7 @@ app.get('/get-boards', async (req, res) => {
     }
 });
 
-// Crear una nueva pizarra en ZooKeeper
+// Endpoint to create a new board in ZooKeeper
 app.post('/create-board', express.json(), async (req, res) => {
     const { boardName } = req.body;
     try {
@@ -115,6 +115,7 @@ app.post('/create-board', express.json(), async (req, res) => {
     }
 });
 
+// Endpoint to delete a board from ZooKeeper
 app.delete('/delete-board', async (req, res) => {
     const { boardName } = req.body;
 
@@ -123,7 +124,6 @@ app.delete('/delete-board', async (req, res) => {
     }
 
     try {
-        // Llama a la función deleteBoard para eliminar la pizarra
         await zookeeperClient.deleteBoard(boardName);
         console.log(`Pizarra "${boardName}" eliminada.`);
         res.status(200).json({ message: 'Pizarra eliminada correctamente.' });
@@ -133,110 +133,109 @@ app.delete('/delete-board', async (req, res) => {
     }
 });
 
-// Configura WebSocket
+// WebSocket server setup for real-time board collaboration
 const wss = new WebSocket.Server({ noServer: true });
-const boards = {}; // Almacena el contenido de las pizarras en memoria
-let currentEditor = null; // Usuario que tiene el control de edición
-let editorQueue = []; // Cola de usuarios esperando el control
+const boards = {}; // In-memory storage for board contents
+let currentEditor = null; // Tracks the current editor (user with edit lock)
+let editorQueue = []; // Queue for users waiting for edit control
 
 wss.on('connection', (ws) => {
     ws.on('message', async (message) => {
         const data = JSON.parse(message);
 
+        // Handle user joining a board: load content from ZooKeeper and send to user
         if (data.type === 'join-board') {
-            // --- CAMBIO: Cargar contenido desde ZooKeeper al entrar a la pizarra ---
             let canvasData = '';
             try {
                 canvasData = await getBoardContent(data.boardName);
                 boards[data.boardName] = { content: canvasData };
             } catch (err) {
-                // Si no hay contenido, inicializa vacío
                 boards[data.boardName] = { content: '' };
                 canvasData = '';
             }
-            // Envía el contenido actual de la pizarra al usuario que se une
             ws.send(JSON.stringify({ type: 'update-canvas', canvasData }));
-        } else if (data.type === 'update-canvas') {
-            // --- CAMBIO: Guardar el contenido en memoria y en ZooKeeper ---
-            boards[data.boardName].content = data.canvasData;
 
-            // Guarda el contenido en ZooKeeper
+        // Handle canvas updates: save to memory and ZooKeeper, then broadcast
+        } else if (data.type === 'update-canvas') {
+            boards[data.boardName].content = data.canvasData;
             try {
                 await updateBoardContent(data.boardName, data.canvasData);
             } catch (err) {
                 console.error('Error al guardar el contenido en ZooKeeper:', err);
             }
-
-            // Transmite los cambios a todos los usuarios excepto al remitente
             broadcast(data, ws);
+
+        // Handle board list requests
         } else if (data.type === 'get-boards') {
-            // Enviar la lista de pizarras al cliente que lo solicita
             ws.send(JSON.stringify({ type: 'board-list', boards: Object.keys(boards) }));
+
+        // Handle board creation and notify all clients
         } else if (data.type === 'create-board') {
             const { boardName, user } = data;
-
-            // Verifica si el nombre de la pizarra ya existe
             if (!boards[boardName]) {
                 boards[boardName] = { content: '', owner: user };
-
-                // Enviar la lista actualizada de pizarras a todos los clientes
                 broadcast({ type: 'board-list', boards: Object.keys(boards) });
                 console.log(`Pizarra creada: ${boardName}`);
             } else {
                 ws.send(JSON.stringify({ type: 'error', message: 'La pizarra ya existe.' }));
             }
+
+        // Handle generic content update and broadcast
         } else if (data.type === 'update') {
             boards[data.boardName].content = data.message;
             broadcast({ type: 'update', message: data.message, boardName: data.boardName });
+
+        // Handle lock requests for collaborative editing
         } else if (data.type === 'lock') {
             if (data.request) {
                 handleLockRequest(ws, data.boardName);
             } else {
                 releaseLock(ws);
             }
+
+        // Handle pointer position updates for collaborative cursors
         } else if (data.type === 'pointer') {
-            broadcast(data, ws); // retransmite a todos menos al remitente
+            broadcast(data, ws);
         }
     });
 
+    // Handle user disconnect: release lock and update queue
     ws.on('close', () => {
         if (currentEditor === ws) {
             releaseLock(ws);
         }
-        editorQueue = editorQueue.filter((client) => client !== ws); // Elimina al usuario de la cola
+        editorQueue = editorQueue.filter((client) => client !== ws);
     });
 });
 
+// Handles lock requests for collaborative editing
 function handleLockRequest(ws, boardName) {
     if (!currentEditor) {
-        // Si no hay un editor actual, asigna el control al usuario
         currentEditor = ws;
         ws.send(JSON.stringify({ type: 'lock', isLocked: true, username: ws.username }));
         broadcast({ type: 'lock', isLocked: false, username: ws.username }, ws);
     } else {
-        // Si ya hay un editor, añade al usuario a la cola
         editorQueue.push(ws);
         ws.send(JSON.stringify({ type: 'lock', isLocked: false, username: currentEditor.username }));
     }
 }
 
+// Releases the edit lock and assigns it to the next user in the queue if available
 function releaseLock(ws) {
     if (currentEditor === ws) {
         currentEditor = null;
-
-        // Si hay usuarios en la cola, asigna el control al siguiente
         if (editorQueue.length > 0) {
             const nextEditor = editorQueue.shift();
             currentEditor = nextEditor;
             nextEditor.send(JSON.stringify({ type: 'lock', isLocked: true, username: nextEditor.username }));
             broadcast({ type: 'lock', isLocked: false, username: nextEditor.username }, nextEditor);
         } else {
-            // Notifica que no hay ningún editor actual
             broadcast({ type: 'lock', isLocked: false, username: null });
         }
     }
 }
 
+// Broadcasts a message to all connected WebSocket clients except the sender
 function broadcast(data, exclude) {
     wss.clients.forEach((client) => {
         if (client !== exclude && client.readyState === WebSocket.OPEN) {
@@ -245,7 +244,7 @@ function broadcast(data, exclude) {
     });
 }
 
-// Inicia el servidor HTTP y WebSocket
+// Start HTTP and WebSocket server
 const server = app.listen(port, () => {
     console.log(`Servidor corriendo en http://localhost:${port}`);
 });

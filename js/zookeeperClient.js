@@ -1,3 +1,4 @@
+// Import ZooKeeper client library and set up connection paths
 const zookeeper = require('node-zookeeper-client');
 
 const client = zookeeper.createClient('localhost:2181');
@@ -5,28 +6,29 @@ const messagePath = '/shared-message';
 const usersPath = '/users';
 const boardsPath = '/boards';
 
+// On connection, ensure root nodes for messages, users, and boards exist in ZooKeeper
 client.once('connected', () => {
-    console.log('Conectado a ZooKeeper.');
+    console.log('Connected to ZooKeeper.');
 
-    // Crea el nodo si no existe
+    // Ensure the shared message node exists
     client.exists(messagePath, (error, stat) => {
         if (error) {
-            console.error('Error verificando el nodo:', error);
+            console.error('Error checking node:', error);
         } else if (!stat) {
             client.create(messagePath, Buffer.from(''), (err) => {
-                if (err) console.error('Error creando el nodo:', err);
+                if (err) console.error('Error creating node:', err);
             });
         }
     });
 
-    // Crea nodos raíz si no existen
+    // Ensure root nodes for users and boards exist
     [usersPath, boardsPath].forEach((path) => {
         client.exists(path, (error, stat) => {
             if (error) {
-                console.error(`Error verificando el nodo ${path}:`, error);
+                console.error(`Error checking node ${path}:`, error);
             } else if (!stat) {
                 client.create(path, (err) => {
-                    if (err) console.error(`Error creando el nodo ${path}:`, err);
+                    if (err) console.error(`Error creating node ${path}:`, err);
                 });
             }
         });
@@ -35,6 +37,7 @@ client.once('connected', () => {
 
 client.connect();
 
+// Set a shared message in ZooKeeper
 async function setMessage(message) {
     return new Promise((resolve, reject) => {
         client.setData(messagePath, Buffer.from(message), (error) => {
@@ -44,6 +47,7 @@ async function setMessage(message) {
     });
 }
 
+// Get the shared message from ZooKeeper
 async function getMessage() {
     return new Promise((resolve, reject) => {
         client.getData(messagePath, (error, data) => {
@@ -53,20 +57,20 @@ async function getMessage() {
     });
 }
 
-// Función para guardar un usuario
+// Save a new user in ZooKeeper, checking if the user already exists
 async function saveUser(username, password) {
     const userPath = `${usersPath}/${username}`;
     return new Promise((resolve, reject) => {
         client.exists(userPath, (error, stat) => {
             if (error) {
-                return reject(new Error('Error al verificar el usuario.'));
+                return reject(new Error('Error checking user.'));
             }
             if (stat) {
-                return reject(new Error('El usuario ya existe.'));
+                return reject(new Error('User already exists.'));
             }
             client.create(userPath, Buffer.from(password), (error) => {
                 if (error) {
-                    return reject(new Error('Error al guardar el usuario.'));
+                    return reject(new Error('Error saving user.'));
                 }
                 resolve();
             });
@@ -74,7 +78,7 @@ async function saveUser(username, password) {
     });
 }
 
-// Función para autenticar un usuario
+// Authenticate a user by comparing the stored password in ZooKeeper
 async function authenticateUser(username, password) {
     const userPath = `${usersPath}/${username}`;
     return new Promise((resolve, reject) => {
@@ -89,13 +93,13 @@ async function authenticateUser(username, password) {
     });
 }
 
-// Función para guardar una pizarra
+// Save a new board in ZooKeeper, checking if the board already exists
 async function saveBoard(boardName, content = '') {
     const boardPath = `${boardsPath}/${boardName}`;
     return new Promise((resolve, reject) => {
         client.exists(boardPath, (error, stat) => {
             if (error) return reject(error);
-            if (stat) return reject(new Error('La pizarra ya existe.'));
+            if (stat) return reject(new Error('Board already exists.'));
             client.create(boardPath, Buffer.from(content), (err) => {
                 if (err) return reject(err);
                 resolve();
@@ -104,7 +108,7 @@ async function saveBoard(boardName, content = '') {
     });
 }
 
-// Función para obtener el contenido de una pizarra
+// Retrieve the content of a board from ZooKeeper
 async function getBoardContent(boardName) {
     const boardPath = `${boardsPath}/${boardName}`;
     return new Promise((resolve, reject) => {
@@ -115,28 +119,29 @@ async function getBoardContent(boardName) {
     });
 }
 
+// Delete a board node from ZooKeeper
 async function deleteBoard(boardName) {
     const boardPath = `${boardsPath}/${boardName}`;
     return new Promise((resolve, reject) => {
         client.exists(boardPath, (error, stat) => {
             if (error) {
-                return reject(new Error('Error al verificar la existencia de la pizarra.'));
+                return reject(new Error('Error checking board existence.'));
             }
             if (!stat) {
-                return reject(new Error('La pizarra no existe.'));
+                return reject(new Error('Board does not exist.'));
             }
             client.remove(boardPath, (err) => {
                 if (err) {
-                    return reject(new Error('Error al eliminar la pizarra.'));
+                    return reject(new Error('Error deleting board.'));
                 }
-                console.log(`Pizarra "${boardName}" eliminada de ZooKeeper.`);
+                console.log(`Board "${boardName}" deleted from ZooKeeper.`);
                 resolve();
             });
         });
     });
 }
 
-// Función para actualizar el contenido de una pizarra
+// Update the content of an existing board in ZooKeeper
 async function updateBoardContent(boardName, content) {
     const boardPath = `${boardsPath}/${boardName}`;
     return new Promise((resolve, reject) => {
@@ -147,7 +152,7 @@ async function updateBoardContent(boardName, content) {
     });
 }
 
-// Obtener los hijos de un nodo
+// Get the children (nodes) of a given ZooKeeper path
 async function getChildren(path) {
     return new Promise((resolve, reject) => {
         client.getChildren(path, (error, children) => {
@@ -159,7 +164,7 @@ async function getChildren(path) {
     });
 }
 
-// Crear un nodo en ZooKeeper
+// Create a new node in ZooKeeper with provided data
 async function createNode(path, data) {
     return new Promise((resolve, reject) => {
         client.create(path, Buffer.from(data), (error) => {
@@ -171,6 +176,7 @@ async function createNode(path, data) {
     });
 }
 
+// Export all utility functions for use in other modules
 module.exports = {
     setMessage,
     getMessage,
@@ -181,5 +187,5 @@ module.exports = {
     updateBoardContent,
     getChildren,
     createNode,
-    deleteBoard, // Exporta la función para que pueda ser utilizada en el servidor
+    deleteBoard, 
 };
