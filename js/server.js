@@ -140,22 +140,34 @@ let currentEditor = null; // Usuario que tiene el control de edición
 let editorQueue = []; // Cola de usuarios esperando el control
 
 wss.on('connection', (ws) => {
-    ws.on('message', (message) => {
+    ws.on('message', async (message) => {
         const data = JSON.parse(message);
 
         if (data.type === 'join-board') {
-            if (!boards[data.boardName]) {
-                // Inicializa la pizarra si no existe
+            // --- CAMBIO: Cargar contenido desde ZooKeeper al entrar a la pizarra ---
+            let canvasData = '';
+            try {
+                canvasData = await getBoardContent(data.boardName);
+                boards[data.boardName] = { content: canvasData };
+            } catch (err) {
+                // Si no hay contenido, inicializa vacío
                 boards[data.boardName] = { content: '' };
+                canvasData = '';
             }
-
             // Envía el contenido actual de la pizarra al usuario que se une
-            ws.send(JSON.stringify({ type: 'update', message: boards[data.boardName].content }));
+            ws.send(JSON.stringify({ type: 'update-canvas', canvasData }));
         } else if (data.type === 'update-canvas') {
-            // Actualiza el contenido de la pizarra
+            // --- CAMBIO: Guardar el contenido en memoria y en ZooKeeper ---
             boards[data.boardName].content = data.canvasData;
 
-            // Transmite los cambios a todos los usuarios
+            // Guarda el contenido en ZooKeeper
+            try {
+                await updateBoardContent(data.boardName, data.canvasData);
+            } catch (err) {
+                console.error('Error al guardar el contenido en ZooKeeper:', err);
+            }
+
+            // Transmite los cambios a todos los usuarios excepto al remitente
             broadcast(data, ws);
         } else if (data.type === 'get-boards') {
             // Enviar la lista de pizarras al cliente que lo solicita
@@ -182,6 +194,8 @@ wss.on('connection', (ws) => {
             } else {
                 releaseLock(ws);
             }
+        } else if (data.type === 'pointer') {
+            broadcast(data, ws); // retransmite a todos menos al remitente
         }
     });
 

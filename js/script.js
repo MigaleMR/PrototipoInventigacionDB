@@ -85,7 +85,6 @@ if (
     !userDisplay ||
     !newBoardNameInput ||
     !createBoardButton ||
-    !clearButton ||
     !backButton ||
     !canvas ||
     !ctx
@@ -99,7 +98,6 @@ if (
         userDisplay,
         newBoardNameInput,
         createBoardButton,
-        clearButton,
         backButton,
         canvas,
         ctx,
@@ -127,6 +125,19 @@ socket.onmessage = (event) => {
         updateBoardList(data.boards);
     } else if (data.type === 'error') {
         alert(`Error: ${data.message}`);
+    } else if (data.type === 'pointer' && data.username !== currentUser) {
+        const pointer = document.getElementById('remote-pointer');
+        const pointerName = document.getElementById('remote-pointer-name');
+        pointer.style.display = 'block';
+        pointer.style.left = (canvas.offsetLeft + data.x) + 'px';
+        pointer.style.top = (canvas.offsetTop + data.y) + 'px';
+        pointerName.textContent = data.username;
+
+        // Oculta el puntero si no se recibe actualización en 1 segundo
+        clearTimeout(window.pointerTimeout);
+        window.pointerTimeout = setTimeout(() => {
+            pointer.style.display = 'none';
+        }, 1000);
     }
 };
 
@@ -417,6 +428,16 @@ canvas.addEventListener('mousemove', (event) => {
     lastX = x;
     lastY = y;
 
+    if (painting && currentUser && currentBoard) {
+        sendMessage({
+            type: 'pointer',
+            boardName: currentBoard,
+            username: currentUser,
+            x,
+            y
+        });
+    }
+
     // Sincroniza el contenido del canvas con el servidor
     const canvasData = canvas.toDataURL();
     sendMessage({ type: 'update-canvas', boardName: currentBoard, canvasData });
@@ -536,9 +557,23 @@ canvas.addEventListener('click', (event) => {
 
 // Descargar pizarra como imagen
 document.getElementById('download-button').addEventListener('click', () => {
+    // Crear un canvas temporal
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Pintar fondo blanco
+    tempCtx.fillStyle = '#fff';
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    // Dibujar el contenido del canvas original
+    tempCtx.drawImage(canvas, 0, 0);
+
+    // Descargar la imagen con fondo blanco
     const link = document.createElement('a');
     link.download = `${currentBoard}.png`;
-    link.href = canvas.toDataURL();
+    link.href = tempCanvas.toDataURL();
     link.click();
 });
 
