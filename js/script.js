@@ -297,12 +297,6 @@ function deleteBoard(boardName) {
 }
 
 // Eventos para pintar en el canvas
-canvas.addEventListener('mousedown', (event) => {
-    painting = true;
-    const rect = canvas.getBoundingClientRect();
-    lastX = event.clientX - rect.left;
-    lastY = event.clientY - rect.top;
-});
 
 let selectedShape = 'rectangle';
 
@@ -322,8 +316,6 @@ canvas.addEventListener('mousedown', (event) => {
         const rect = canvas.getBoundingClientRect();
         startX = event.clientX - rect.left;
         startY = event.clientY - rect.top;
-
-        // Guarda el estado actual del canvas
         canvasState = ctx.getImageData(0, 0, canvas.width, canvas.height);
     } else {
         painting = true;
@@ -340,7 +332,6 @@ canvas.addEventListener('mousemove', (event) => {
         const currentX = event.clientX - rect.left;
         const currentY = event.clientY - rect.top;
 
-        // Restaura el estado del canvas antes de dibujar
         ctx.putImageData(canvasState, 0, 0);
 
         ctx.beginPath();
@@ -362,43 +353,26 @@ canvas.addEventListener('mousemove', (event) => {
             ctx.closePath();
         } else if (selectedShape === 'pentagon' || selectedShape === 'hexagon') {
             const sides = selectedShape === 'pentagon' ? 5 : 6;
-            const radius = Math.sqrt(Math.pow(currentX - startX, 2) + Math.pow(currentY - startY, 2));
-            const angle = (2 * Math.PI) / sides;
+            const dx = currentX - startX;
+            const dy = currentY - startY;
+            const radius = Math.sqrt(dx * dx + dy * dy);
+            // Calcula el ángulo de rotación basado en el movimiento del mouse
+            const rotation = Math.atan2(dy, dx);
 
-            ctx.moveTo(startX + radius * Math.cos(0), startY + radius * Math.sin(0));
+            ctx.moveTo(
+                startX + radius * Math.cos(rotation),
+                startY + radius * Math.sin(rotation)
+            );
             for (let i = 1; i <= sides; i++) {
                 ctx.lineTo(
-                    startX + radius * Math.cos(i * angle),
-                    startY + radius * Math.sin(i * angle)
+                    startX + radius * Math.cos(rotation + i * 2 * Math.PI / sides),
+                    startY + radius * Math.sin(rotation + i * 2 * Math.PI / sides)
                 );
             }
             ctx.closePath();
         }
 
         ctx.stroke();
-    } else if (painting && (currentTool === 'pencil' || currentTool === 'eraser')) {
-        const rect = canvas.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-
-        ctx.beginPath();
-        ctx.moveTo(lastX, lastY);
-        ctx.lineTo(x, y);
-
-        if (currentTool === 'eraser') {
-            ctx.globalCompositeOperation = 'destination-out'; // Borra en lugar de dibujar
-            ctx.lineWidth = brushSize * 2; // Tamaño más grande para borrar
-        } else {
-            ctx.globalCompositeOperation = 'source-over'; // Dibuja normalmente
-            ctx.strokeStyle = currentTool === 'highlight' ? `${brushColor}80` : brushColor;
-            ctx.lineWidth = brushSize;
-        }
-
-        ctx.stroke();
-        ctx.closePath();
-
-        lastX = x;
-        lastY = y;
     }
 });
 
@@ -411,32 +385,35 @@ canvas.addEventListener('mousemove', (event) => {
     const y = event.clientY - rect.top;
 
     if (currentTool === 'eraser') {
-        ctx.globalCompositeOperation = 'destination-out'; // Borra en lugar de dibujar
+        ctx.globalCompositeOperation = 'destination-out';
         ctx.beginPath();
-        ctx.arc(x, y, brushSize, 0, Math.PI * 2); // Dibuja un círculo para borrar
+        ctx.arc(x, y, brushSize, 0, Math.PI * 2);
         ctx.fill();
         ctx.closePath();
     } else if (currentTool === 'highlight') {
-        ctx.globalCompositeOperation = 'source-over'; // Dibuja normalmente
-        ctx.strokeStyle = `${brushColor}80`; // Color semitransparente para subrayador
-        ctx.lineWidth = brushSize;
-        ctx.lineCap = 'round'; // Hace que los extremos sean redondeados
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = hexToRgba(brushColor, 0.4); // 40% opacidad
+        ctx.lineWidth = brushSize * 2;
+        ctx.lineCap = 'round';
 
         ctx.beginPath();
-        ctx.moveTo(lastX, lastY); // Empieza desde la última posición
-        ctx.lineTo(x, y); // Traza hasta la nueva posición
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(x, y);
         ctx.stroke();
-        ctx.closePath();
-    } else {
-        ctx.globalCompositeOperation = 'source-over'; // Dibuja normalmente
-        ctx.fillStyle = brushColor; // Color para el lápiz
+        // NO uses ctx.closePath() aquí, para evitar artefactos de puntos
+    } else if (currentTool === 'pencil') {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = brushColor;
+        ctx.lineWidth = brushSize;
+        ctx.lineCap = 'round';
+
         ctx.beginPath();
-        ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2); // Dibuja un círculo para el lápiz
-        ctx.fill();
-        ctx.closePath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        // NO uses ctx.closePath() aquí, para evitar artefactos de puntos
     }
 
-    // Actualiza las coordenadas para el siguiente movimiento
     lastX = x;
     lastY = y;
 
@@ -453,44 +430,6 @@ canvas.addEventListener('mouseup', () => {
     // Sincroniza el contenido del canvas con el servidor
     const canvasData = canvas.toDataURL();
     sendMessage({ type: 'update-canvas', boardName: currentBoard, canvasData });
-});
-
-canvas.addEventListener('mousemove', (event) => {
-    if (!painting || (currentTool !== 'pencil' && currentTool !== 'eraser' && currentTool !== 'highlight')) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    if (currentTool === 'eraser') {
-        ctx.globalCompositeOperation = 'destination-out'; // Borra en lugar de dibujar
-        ctx.beginPath();
-        ctx.arc(x, y, brushSize, 0, Math.PI * 2); // Dibuja un círculo para borrar
-        ctx.fill();
-        ctx.closePath();
-    } else if (currentTool === 'highlight') {
-        ctx.globalCompositeOperation = 'source-over'; // Dibuja normalmente
-        ctx.strokeStyle = `${brushColor}80`; // Color semitransparente para subrayador
-        ctx.lineWidth = brushSize;
-        ctx.lineCap = 'round'; // Hace que los extremos sean redondeados
-
-        ctx.beginPath();
-        ctx.moveTo(lastX, lastY); // Empieza desde la última posición
-        ctx.lineTo(x, y); // Traza hasta la nueva posición
-        ctx.stroke();
-        ctx.closePath();
-    } else {
-        ctx.globalCompositeOperation = 'source-over'; // Dibuja normalmente
-        ctx.fillStyle = brushColor; // Color para el lápiz
-        ctx.beginPath();
-        ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2); // Dibuja un círculo para el lápiz
-        ctx.fill();
-        ctx.closePath();
-    }
-
-    // Actualiza las coordenadas para el siguiente movimiento
-    lastX = x;
-    lastY = y;
 });
 
 // Evento para finalizar el dibujo de figuras
@@ -520,14 +459,20 @@ canvas.addEventListener('mouseup', (event) => {
             ctx.closePath();
         } else if (selectedShape === 'pentagon' || selectedShape === 'hexagon') {
             const sides = selectedShape === 'pentagon' ? 5 : 6;
-            const radius = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
-            const angle = (2 * Math.PI) / sides;
+            const dx = endX - startX;
+            const dy = endY - startY;
+            const radius = Math.sqrt(dx * dx + dy * dy);
+            // Calcula el ángulo de rotación basado en el movimiento del mouse
+            const rotation = Math.atan2(dy, dx);
 
-            ctx.moveTo(startX + radius * Math.cos(0), startY + radius * Math.sin(0));
+            ctx.moveTo(
+                startX + radius * Math.cos(rotation),
+                startY + radius * Math.sin(rotation)
+            );
             for (let i = 1; i <= sides; i++) {
                 ctx.lineTo(
-                    startX + radius * Math.cos(i * angle),
-                    startY + radius * Math.sin(i * angle)
+                    startX + radius * Math.cos(rotation + i * 2 * Math.PI / sides),
+                    startY + radius * Math.sin(rotation + i * 2 * Math.PI / sides)
                 );
             }
             ctx.closePath();
@@ -623,4 +568,15 @@ function broadcast(data, exclude) {
             client.send(JSON.stringify(data));
         }
     });
+}
+
+// Utilidad para convertir HEX a RGBA
+function hexToRgba(hex, alpha) {
+    let r = 0, g = 0, b = 0;
+    if (hex.length === 7) {
+        r = parseInt(hex.slice(1, 3), 16);
+        g = parseInt(hex.slice(3, 5), 16);
+        b = parseInt(hex.slice(5, 7), 16);
+    }
+    return `rgba(${r},${g},${b},${alpha})`;
 }
